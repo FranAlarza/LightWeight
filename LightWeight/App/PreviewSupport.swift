@@ -19,6 +19,13 @@ final class InMemoryTrainingRepository: TrainingRepository {
         storedExercises.append(exercise)
     }
 
+    func updateExercise(_ exercise: Exercise) throws {
+        guard let index = storedExercises.firstIndex(where: { $0.id == exercise.id }) else {
+            throw TrainingRepositoryError.exerciseNotFound
+        }
+        storedExercises[index] = exercise
+    }
+
     func deleteExercise(id: UUID) throws {
         storedExercises.removeAll { $0.id == id }
         storedSets.removeAll { $0.exerciseID == id }
@@ -43,8 +50,11 @@ final class InMemoryTrainingRepository: TrainingRepository {
 
 nonisolated struct StaticExerciseCatalog: ExerciseCatalogService {
     var exercises: [CatalogExercise] = [
-        "Press de banca", "Sentadilla", "Peso muerto", "Press militar", "Dominadas", "Remo con barra", "Curl de bíceps",
-    ].enumerated().map { CatalogExercise(reference: CatalogReference(source: "wger", externalID: $0.offset), name: $0.element) }
+        ("Press de banca", MuscleGroup.chest), ("Sentadilla", .legs), ("Peso muerto", .back), ("Press militar", .shoulders),
+        ("Dominadas", .back), ("Remo con barra", .back), ("Curl de bíceps", .arms),
+    ].enumerated().map { index, entry in
+        CatalogExercise(reference: CatalogReference(source: "wger", externalID: index), name: entry.0, muscleGroup: entry.1)
+    }
 
     func search(_ query: String) async throws -> [CatalogExercise] {
         query.isEmpty ? exercises : exercises.filter { $0.name.localizedStandardContains(query) }
@@ -55,8 +65,8 @@ extension AppDependencies {
     static func preview(withSampleData: Bool = true) -> AppDependencies {
         let repository = InMemoryTrainingRepository()
         if withSampleData {
-            let bench = Exercise(name: "Press de banca")
-            let squat = Exercise(name: "Sentadilla")
+            let bench = Exercise(name: "Press de banca", muscleGroup: .chest)
+            let squat = Exercise(name: "Sentadilla", muscleGroup: .legs)
             try? repository.addExercise(bench)
             try? repository.addExercise(squat)
             for week in 0..<16 {

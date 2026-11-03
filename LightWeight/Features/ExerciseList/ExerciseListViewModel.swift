@@ -3,7 +3,10 @@ import Observation
 
 @Observable
 final class ExerciseListViewModel {
-    private(set) var summaries: [ExerciseSummary] = []
+    private(set) var summaries: [ExerciseSummary] = [] {
+        didSet { sections = MuscleGroupSection.sections(of: summaries, by: \.exercise.muscleGroup) }
+    }
+    private(set) var sections: [MuscleGroupSection<ExerciseSummary>] = []
     private(set) var hasLoaded = false
     var errorMessage: String?
 
@@ -29,6 +32,17 @@ final class ExerciseListViewModel {
             errorMessage = "No se pudieron cargar tus ejercicios."
         }
         hasLoaded = true
+    }
+
+    func move(_ summary: ExerciseSummary, to muscleGroup: MuscleGroup) {
+        var exercise = summary.exercise
+        exercise.muscleGroup = muscleGroup
+        do {
+            try repository.updateExercise(exercise)
+            load()
+        } catch {
+            errorMessage = "No se pudo cambiar el grupo de «\(exercise.name)»."
+        }
     }
 
     func delete(_ summary: ExerciseSummary) {

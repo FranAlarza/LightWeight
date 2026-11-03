@@ -34,6 +34,14 @@ final class SwiftDataTrainingRepository: TrainingRepository {
         try context.save()
     }
 
+    func updateExercise(_ exercise: Exercise) throws {
+        guard let model = try exerciseModel(id: exercise.id) else {
+            throw TrainingRepositoryError.exerciseNotFound
+        }
+        model.update(from: exercise)
+        try context.save()
+    }
+
     func deleteExercise(id: UUID) throws {
         guard let model = try exerciseModel(id: id) else { return }
         context.delete(model)

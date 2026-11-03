@@ -13,9 +13,17 @@ struct AddExerciseView: View {
             List {
                 if viewModel.canCreateCustom {
                     Section {
-                        Button("Crear «\(viewModel.trimmedQuery)»", systemImage: "plus.circle") {
-                            if viewModel.addCustom() { dismiss() }
+                        Menu {
+                            ForEach(MuscleGroup.allCases) { group in
+                                Button(group.title) {
+                                    if viewModel.addCustom(muscleGroup: group) { dismiss() }
+                                }
+                            }
+                        } label: {
+                            Label("Crear «\(viewModel.trimmedQuery)»", systemImage: "plus.circle")
                         }
+                    } footer: {
+                        Text("Elige el grupo muscular del nuevo ejercicio.")
                     }
                 }
                 catalogSection
@@ -61,20 +69,22 @@ struct AddExerciseView: View {
                 description: Text("Comprueba tu conexión. Mientras tanto puedes escribir el nombre y crear un ejercicio personalizado.")
             )
         case .loaded:
-            Section {
-                ForEach(viewModel.results) { item in
-                    Button {
-                        if viewModel.add(item) { dismiss() }
-                    } label: {
-                        HStack(spacing: 12) {
-                            ExerciseThumbnail(url: item.imageURL)
-                            Text(item.name)
+            ForEach(viewModel.sections) { section in
+                Section(section.group.title) {
+                    ForEach(section.items) { item in
+                        Button {
+                            if viewModel.add(item) { dismiss() }
+                        } label: {
+                            HStack(spacing: 12) {
+                                ExerciseThumbnail(url: item.imageURL)
+                                Text(item.name)
+                            }
                         }
+                        .foregroundStyle(.primary)
                     }
-                    .foregroundStyle(.primary)
                 }
-            } header: {
-                Text("Catálogo")
+            }
+            Section {
             } footer: {
                 Link(WgerExerciseCatalog.attribution, destination: WgerExerciseCatalog.websiteURL)
                     .font(.footnote)

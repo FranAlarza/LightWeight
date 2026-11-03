@@ -55,4 +55,48 @@ struct ExerciseListViewModelTests {
         #expect(viewModel.summaries.isEmpty)
         #expect(repository.storedExercises.isEmpty)
     }
+
+    @Test
+    func summariesAreGroupedByMuscleGroup() {
+        // Given
+        let squat = Exercise(name: "Sentadilla", muscleGroup: .legs)
+        let bench = Exercise(name: "Press banca", muscleGroup: .chest)
+        let custom = Exercise(name: "Mi ejercicio")
+        let viewModel = ExerciseListViewModel(
+            repository: InMemoryTrainingRepository(exercises: [squat, bench, custom]),
+            settings: makeSettings()
+        )
+
+        // When
+        viewModel.load()
+
+        // Then
+        #expect(viewModel.sections.map(\.group) == [.chest, .legs, .other])
+    }
+
+    @Test
+    func movingAnExerciseChangesItsSection() {
+        // Given
+        let exercise = Exercise(name: "Bench Press")
+        let repository = InMemoryTrainingRepository(exercises: [exercise])
+        let viewModel = ExerciseListViewModel(repository: repository, settings: makeSettings())
+        viewModel.load()
+
+        // When
+        viewModel.move(viewModel.summaries[0], to: .chest)
+
+        // Then
+        #expect(viewModel.sections.map(\.group) == [.chest])
+        #expect(repository.storedExercises.first?.muscleGroup == .chest)
+    }
+
+    @Test
+    func moveFailureShowsError() {
+        let viewModel = ExerciseListViewModel(repository: FailingTrainingRepository(), settings: makeSettings())
+        let summary = ExerciseSummary(exercise: Exercise(name: "Remo"), lastSet: nil, personalRecord: nil)
+
+        viewModel.move(summary, to: .back)
+
+        #expect(viewModel.errorMessage != nil)
+    }
 }

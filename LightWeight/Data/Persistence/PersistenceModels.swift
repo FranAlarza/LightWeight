@@ -8,6 +8,7 @@ import SwiftData
 final class ExerciseModel {
     var id: UUID = UUID()
     var name: String = ""
+    var muscleGroupRaw: String = MuscleGroup.other.rawValue
     var catalogSource: String?
     var catalogExternalID: Int?
     var imageURLString: String?
@@ -18,7 +19,12 @@ final class ExerciseModel {
 
     init(_ exercise: Exercise) {
         id = exercise.id
+        update(from: exercise)
+    }
+
+    func update(from exercise: Exercise) {
         name = exercise.name
+        muscleGroupRaw = exercise.muscleGroup.rawValue
         catalogSource = exercise.catalogReference?.source
         catalogExternalID = exercise.catalogReference?.externalID
         imageURLString = exercise.imageURL?.absoluteString
@@ -32,6 +38,7 @@ final class ExerciseModel {
         return Exercise(
             id: id,
             name: name,
+            muscleGroup: MuscleGroup(rawValue: muscleGroupRaw) ?? .other,
             catalogReference: reference,
             imageURL: imageURLString.flatMap(URL.init(string:)),
             createdAt: createdAt

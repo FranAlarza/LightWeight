@@ -22,6 +22,22 @@ extension WorkoutSet {
     var summary: String { "\(weight.formatted) × \(reps)" }
 }
 
+extension MuscleGroup {
+    var title: String {
+        switch self {
+        case .chest: "Pecho"
+        case .back: "Espalda"
+        case .shoulders: "Hombros"
+        case .arms: "Brazos"
+        case .legs: "Piernas"
+        case .calves: "Gemelos"
+        case .abs: "Abdominales"
+        case .cardio: "Cardio"
+        case .other: "Otros"
+        }
+    }
+}
+
 extension ProgressMetric {
     var title: String {
         switch self {

@@ -7,6 +7,7 @@ nonisolated struct TestError: Error {}
 final class FailingTrainingRepository: TrainingRepository {
     func exercises() throws -> [Exercise] { throw TestError() }
     func addExercise(_ exercise: Exercise) throws { throw TestError() }
+    func updateExercise(_ exercise: Exercise) throws { throw TestError() }
     func deleteExercise(id: UUID) throws { throw TestError() }
     func sets(forExerciseID exerciseID: UUID) throws -> [WorkoutSet] { throw TestError() }
     func saveSet(_ set: WorkoutSet) throws { throw TestError() }

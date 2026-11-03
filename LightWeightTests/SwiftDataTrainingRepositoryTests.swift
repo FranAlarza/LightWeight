@@ -41,6 +41,27 @@ struct SwiftDataTrainingRepositoryTests {
     }
 
     @Test
+    func updatingAnExerciseChangesItsMuscleGroup() throws {
+        // Given
+        var exercise = Exercise(name: "Bench Press")
+        try repository.addExercise(exercise)
+
+        // When
+        exercise.muscleGroup = .chest
+        try repository.updateExercise(exercise)
+
+        // Then
+        #expect(try repository.exercises() == [exercise])
+    }
+
+    @Test
+    func updatingAMissingExerciseFails() {
+        #expect(throws: TrainingRepositoryError.exerciseNotFound) {
+            try repository.updateExercise(Exercise(name: "Fantasma"))
+        }
+    }
+
+    @Test
     func savingAnExistingSetUpdatesIt() throws {
         // Given
         let exercise = Exercise(name: "Peso muerto")

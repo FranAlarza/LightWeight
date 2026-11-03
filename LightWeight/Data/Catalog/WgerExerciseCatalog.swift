@@ -6,16 +6,21 @@ nonisolated enum CatalogError: Error, Equatable {
 
 /// Exercise catalog backed by the public wger API (https://wger.de).
 ///
-/// wger has no text search, so the whole list for one language is downloaded once
-/// and filtered locally. Exercise content is licensed CC-BY-SA 4.0 and must be attributed.
+/// wger has no text search, so the whole list for one language is downloaded and
+/// filtered locally. The download is kept on disk for `cacheLifetime` so the catalog
+/// opens instantly and works offline. Exercise content is licensed CC-BY-SA 4.0 and
+/// must be attributed.
 actor WgerExerciseCatalog: ExerciseCatalogService {
     static let source = "wger"
     static let attribution = "Datos de ejercicios de wger.de (CC-BY-SA 4.0)"
     static let websiteURL = URL(string: "https://wger.de")!
+    static let cacheLifetime: TimeInterval = 15 * 24 * 60 * 60
 
     private let client: HTTPClient
     private let baseURL: URL
     private let languageID: Int
+    private let cacheStore: CatalogCacheStore
+    private let now: @Sendable () -> Date
     private var cachedExercises: [CatalogExercise]?
     private var inFlightLoad: Task<[CatalogExercise], Error>?
 
@@ -24,11 +29,15 @@ actor WgerExerciseCatalog: ExerciseCatalogService {
         baseURL: URL = URL(string: "https://wger.de/api/v2/")!,
         // Not `Locale.current`: it follows the app's own localizations (English only),
         // so a Spanish device would still get the English catalog.
-        preferredLanguages: [String] = Locale.preferredLanguages
+        preferredLanguages: [String] = Locale.preferredLanguages,
+        cacheStore: CatalogCacheStore = FileCatalogCacheStore(),
+        now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.client = client
         self.baseURL = baseURL
         self.languageID = Self.languageID(forPreferredLanguages: preferredLanguages)
+        self.cacheStore = cacheStore
+        self.now = now
     }
 
     func search(_ query: String) async throws -> [CatalogExercise] {
@@ -52,16 +61,48 @@ actor WgerExerciseCatalog: ExerciseCatalogService {
             .first ?? 2
     }
 
+    /// wger exercise categories (`/exercisecategory/`) mapped to muscle groups.
+    static func muscleGroup(forCategoryID categoryID: Int?) -> MuscleGroup {
+        switch categoryID {
+        case 8: .arms
+        case 9: .legs
+        case 10: .abs
+        case 11: .chest
+        case 12: .back
+        case 13: .shoulders
+        case 14: .calves
+        case 15: .cardio
+        default: .other
+        }
+    }
+
     private func allExercises() async throws -> [CatalogExercise] {
         if let cachedExercises { return cachedExercises }
         if let inFlightLoad { return try await inFlightLoad.value }
 
-        let load = Task { try await fetchAll() }
+        let load = Task { try await loadFromCacheOrNetwork() }
         inFlightLoad = load
         defer { inFlightLoad = nil }
         let exercises = try await load.value
         cachedExercises = exercises
         return exercises
+    }
+
+    private func loadFromCacheOrNetwork() async throws -> [CatalogExercise] {
+        let snapshot = await cacheStore.load().flatMap { $0.languageID == languageID ? $0 : nil }
+        if let snapshot, now().timeIntervalSince(snapshot.fetchedAt) < Self.cacheLifetime {
+            return snapshot.exercises
+        }
+
+        do {
+            let exercises = try await fetchAll()
+            await cacheStore.save(CatalogSnapshot(fetchedAt: now(), languageID: languageID, exercises: exercises))
+            return exercises
+        } catch {
+            // An expired catalog is still better than none, e.g. when offline.
+            guard let snapshot else { throw error }
+            return snapshot.exercises
+        }
     }
 
     /// Only exercises with a main image are offered: they tend to be the common gym
@@ -80,11 +121,20 @@ actor WgerExerciseCatalog: ExerciseCatalogService {
                 URLQueryItem(name: "limit", value: "500"),
             ])
 
+        let exercisesURL = baseURL
+            .appending(path: "exercise/")
+            .appending(queryItems: [URLQueryItem(name: "limit", value: "500")])
+
         async let translations: [WgerTranslationDTO] = fetchPages(startingAt: translationsURL)
         async let images: [WgerImageDTO] = fetchPages(startingAt: imagesURL)
+        async let exercises: [WgerExerciseDTO] = fetchPages(startingAt: exercisesURL)
 
         let imageURLs = Dictionary(
             try await images.map { ($0.exercise, $0.thumbnails?.small ?? $0.image) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let muscleGroups = Dictionary(
+            try await exercises.map { ($0.id, Self.muscleGroup(forCategoryID: $0.category)) },
             uniquingKeysWith: { first, _ in first }
         )
 
@@ -96,6 +146,7 @@ actor WgerExerciseCatalog: ExerciseCatalogService {
                 return CatalogExercise(
                     reference: CatalogReference(source: Self.source, externalID: translation.exercise),
                     name: translation.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    muscleGroup: muscleGroups[translation.exercise] ?? .other,
                     imageURL: imageURL
                 )
             }
@@ -129,6 +180,11 @@ nonisolated struct WgerPageDTO<Item: Decodable & Sendable>: Decodable, Sendable 
 nonisolated struct WgerTranslationDTO: Decodable, Sendable {
     let exercise: Int
     let name: String
+}
+
+nonisolated struct WgerExerciseDTO: Decodable, Sendable {
+    let id: Int
+    let category: Int?
 }
 
 nonisolated struct WgerImageDTO: Decodable, Sendable {

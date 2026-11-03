@@ -11,7 +11,10 @@ final class AddExerciseViewModel {
     }
 
     var query = ""
-    private(set) var results: [CatalogExercise] = []
+    private(set) var results: [CatalogExercise] = [] {
+        didSet { sections = MuscleGroupSection.sections(of: results, by: \.muscleGroup) }
+    }
+    private(set) var sections: [MuscleGroupSection<CatalogExercise>] = []
     private(set) var catalogState: CatalogState = .idle
     var errorMessage: String?
 
@@ -50,12 +53,17 @@ final class AddExerciseViewModel {
 
     /// Returns `true` when the exercise was saved and the screen can close.
     func add(_ item: CatalogExercise) -> Bool {
-        save(Exercise(name: item.name, catalogReference: item.reference, imageURL: item.imageURL))
+        save(Exercise(
+            name: item.name,
+            muscleGroup: item.muscleGroup,
+            catalogReference: item.reference,
+            imageURL: item.imageURL
+        ))
     }
 
-    func addCustom() -> Bool {
+    func addCustom(muscleGroup: MuscleGroup) -> Bool {
         guard !trimmedQuery.isEmpty else { return false }
-        return save(Exercise(name: trimmedQuery))
+        return save(Exercise(name: trimmedQuery, muscleGroup: muscleGroup))
     }
 
     private func save(_ exercise: Exercise) -> Bool {

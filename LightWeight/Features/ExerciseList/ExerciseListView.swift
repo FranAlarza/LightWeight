@@ -49,13 +49,34 @@ struct ExerciseListView: View {
             }
         } else {
             List {
-                ForEach(viewModel.summaries) { summary in
-                    NavigationLink(value: summary.exercise) {
-                        ExerciseRow(summary: summary, preferredUnit: viewModel.settings.preferredUnit)
+                ForEach(viewModel.sections) { section in
+                    Section(section.group.title) {
+                        ForEach(section.items) { summary in
+                            NavigationLink(value: summary.exercise) {
+                                ExerciseRow(summary: summary, preferredUnit: viewModel.settings.preferredUnit)
+                            }
+                            .contextMenu { muscleGroupMenu(for: summary) }
+                        }
+                        .onDelete { offsets in
+                            offsets.map { section.items[$0] }.forEach(viewModel.delete)
+                        }
                     }
                 }
-                .onDelete { offsets in
-                    offsets.map { viewModel.summaries[$0] }.forEach(viewModel.delete)
+            }
+        }
+    }
+
+    private func muscleGroupMenu(for summary: ExerciseSummary) -> some View {
+        Menu("Grupo muscular", systemImage: "figure.strengthtraining.traditional") {
+            ForEach(MuscleGroup.allCases) { group in
+                Button {
+                    viewModel.move(summary, to: group)
+                } label: {
+                    if group == summary.exercise.muscleGroup {
+                        Label(group.title, systemImage: "checkmark")
+                    } else {
+                        Text(group.title)
+                    }
                 }
             }
         }

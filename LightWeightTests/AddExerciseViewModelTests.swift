@@ -18,6 +18,19 @@ struct AddExerciseViewModelTests {
     }
 
     @Test
+    func resultsAreGroupedByMuscleGroupInDisplayOrder() async {
+        // Given
+        let viewModel = AddExerciseViewModel(catalog: StaticExerciseCatalog(), repository: InMemoryTrainingRepository())
+
+        // When
+        await viewModel.search()
+
+        // Then
+        #expect(viewModel.sections.map(\.group) == [.chest, .back, .shoulders, .arms, .legs])
+        #expect(viewModel.sections.first { $0.group == .back }?.items.map(\.name) == ["Peso muerto", "Dominadas", "Remo con barra"])
+    }
+
+    @Test
     func searchFailureMarksCatalogAsFailed() async {
         let viewModel = AddExerciseViewModel(catalog: FailingCatalog(), repository: InMemoryTrainingRepository())
 
@@ -53,6 +66,7 @@ struct AddExerciseViewModelTests {
         let item = CatalogExercise(
             reference: CatalogReference(source: "wger", externalID: 73),
             name: "Press de banca",
+            muscleGroup: .chest,
             imageURL: URL(string: "https://wger.de/media/exercise-images/73/bench.png")
         )
 
@@ -63,6 +77,7 @@ struct AddExerciseViewModelTests {
         #expect(saved)
         #expect(repository.storedExercises.first?.catalogReference == item.reference)
         #expect(repository.storedExercises.first?.imageURL == item.imageURL)
+        #expect(repository.storedExercises.first?.muscleGroup == .chest)
     }
 
     @Test
@@ -71,10 +86,11 @@ struct AddExerciseViewModelTests {
         let viewModel = AddExerciseViewModel(catalog: StaticExerciseCatalog(), repository: repository)
         viewModel.query = "  Hip thrust "
 
-        let saved = viewModel.addCustom()
+        let saved = viewModel.addCustom(muscleGroup: .legs)
 
         #expect(saved)
         #expect(repository.storedExercises.first?.name == "Hip thrust")
+        #expect(repository.storedExercises.first?.muscleGroup == .legs)
         #expect(repository.storedExercises.first?.catalogReference == nil)
     }
 
@@ -83,7 +99,7 @@ struct AddExerciseViewModelTests {
         let viewModel = AddExerciseViewModel(catalog: StaticExerciseCatalog(), repository: FailingTrainingRepository())
         viewModel.query = "Hip thrust"
 
-        let saved = viewModel.addCustom()
+        let saved = viewModel.addCustom(muscleGroup: .other)
 
         #expect(!saved)
         #expect(viewModel.errorMessage != nil)
