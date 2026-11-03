@@ -22,11 +22,13 @@ actor WgerExerciseCatalog: ExerciseCatalogService {
     init(
         client: HTTPClient = URLSessionHTTPClient(),
         baseURL: URL = URL(string: "https://wger.de/api/v2/")!,
-        languageCode: String? = Locale.current.language.languageCode?.identifier
+        // Not `Locale.current`: it follows the app's own localizations (English only),
+        // so a Spanish device would still get the English catalog.
+        preferredLanguages: [String] = Locale.preferredLanguages
     ) {
         self.client = client
         self.baseURL = baseURL
-        self.languageID = Self.languageID(for: languageCode)
+        self.languageID = Self.languageID(forPreferredLanguages: preferredLanguages)
     }
 
     func search(_ query: String) async throws -> [CatalogExercise] {
@@ -36,11 +38,15 @@ actor WgerExerciseCatalog: ExerciseCatalogService {
         return exercises.filter { $0.name.localizedStandardContains(trimmed) }
     }
 
-    /// wger language ids. Unsupported languages fall back to English.
-    static func languageID(for languageCode: String?) -> Int {
+    /// wger language id of the first preferred language wger supports, falling back to English.
+    /// Accepts BCP 47 identifiers such as "es-ES".
+    static func languageID(forPreferredLanguages preferredLanguages: [String]) -> Int {
         let ids = ["de": 1, "en": 2, "es": 4, "ru": 5, "nl": 6, "pt": 7, "el": 8, "cs": 9,
                    "sv": 10, "no": 11, "fr": 12, "it": 13, "pl": 14, "uk": 15, "tr": 16, "ca": 32]
-        return languageCode.flatMap { ids[$0] } ?? 2
+        return preferredLanguages.lazy
+            .compactMap { Locale.Language(identifier: $0).languageCode?.identifier }
+            .compactMap { ids[$0] }
+            .first ?? 2
     }
 
     private func allExercises() async throws -> [CatalogExercise] {

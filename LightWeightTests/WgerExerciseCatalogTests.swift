@@ -19,7 +19,7 @@ struct WgerExerciseCatalogTests {
     """
 
     private func makeCatalog(client: StubHTTPClient) -> WgerExerciseCatalog {
-        WgerExerciseCatalog(client: client, baseURL: baseURL, languageCode: "es")
+        WgerExerciseCatalog(client: client, baseURL: baseURL, preferredLanguages: ["es-ES"])
     }
 
     @Test
@@ -93,9 +93,16 @@ struct WgerExerciseCatalogTests {
         #expect(results.count == 1)
     }
 
-    @Test(arguments: [("es", 4), ("en", 2), ("de", 1), ("ja", 2), (nil, 2)] as [(String?, Int)])
-    func languageMapping(code: String?, expected: Int) {
-        #expect(WgerExerciseCatalog.languageID(for: code) == expected)
+    @Test(arguments: [
+        (["es-ES"], 4),
+        (["es-419", "en-US"], 4),
+        (["en-US", "es-ES"], 2),
+        (["ja-JP", "fr-FR"], 12),
+        (["ja-JP"], 2),
+        ([], 2),
+    ] as [([String], Int)])
+    func languageMapping(preferredLanguages: [String], expected: Int) {
+        #expect(WgerExerciseCatalog.languageID(forPreferredLanguages: preferredLanguages) == expected)
     }
 }
 
