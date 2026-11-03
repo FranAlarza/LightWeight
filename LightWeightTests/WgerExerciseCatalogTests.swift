@@ -5,28 +5,41 @@ import Testing
 struct WgerExerciseCatalogTests {
     private let baseURL = URL(string: "https://example.test/api/v2/")!
 
-    private static let firstPage = """
-    {"count": 3, "next": "https://example.test/api/v2/exercise-translation/?page=2", "results": [
+    private static let translationsFirstPage = """
+    {"count": 5, "next": "https://example.test/api/v2/exercise-translation/?page=2", "results": [
         {"exercise": 73, "name": "Press de banca", "description": "<p>ignored</p>"},
-        {"exercise": 10, "name": "Sentadilla"}
+        {"exercise": 10, "name": "Sentadilla"},
+        {"exercise": 99, "name": "Ejercicio sin imagen"}
     ]}
     """
-    private static let secondPage = """
-    {"count": 3, "next": null, "results": [
+    private static let translationsSecondPage = """
+    {"count": 5, "next": null, "results": [
         {"exercise": 20, "name": "Curl de bíceps"},
         {"exercise": 21, "name": "curl de BÍCEPS "}
     ]}
     """
+    private static let images = """
+    {"count": 4, "next": null, "results": [
+        {"exercise": 73, "image": "https://example.test/bench.png", "thumbnails": {"small": "https://example.test/bench-small.png"}},
+        {"exercise": 10, "image": "https://example.test/squat.png", "thumbnails": null},
+        {"exercise": 20, "image": "https://example.test/curl.png", "thumbnails": {"small": "https://example.test/curl-small.png"}},
+        {"exercise": 21, "image": "https://example.test/curl2.png", "thumbnails": {"small": "https://example.test/curl2-small.png"}}
+    ]}
+    """
+
+    private static let defaultRoutes = [
+        "exercise-translation": [translationsFirstPage, translationsSecondPage],
+        "exerciseimage": [images],
+    ]
 
     private func makeCatalog(client: StubHTTPClient) -> WgerExerciseCatalog {
         WgerExerciseCatalog(client: client, baseURL: baseURL, preferredLanguages: ["es-ES"])
     }
 
     @Test
-    func emptyQueryReturnsAllPagesSortedAndDeduplicated() async throws {
+    func emptyQueryReturnsExercisesWithImagesSortedAndDeduplicated() async throws {
         // Given
-        let client = StubHTTPClient(responses: [Self.firstPage, Self.secondPage])
-        let catalog = makeCatalog(client: client)
+        let catalog = makeCatalog(client: StubHTTPClient(routes: Self.defaultRoutes))
 
         // When
         let results = try await catalog.search("")
@@ -37,8 +50,31 @@ struct WgerExerciseCatalogTests {
     }
 
     @Test
+    func exercisesWithoutImageAreLeftOut() async throws {
+        let catalog = makeCatalog(client: StubHTTPClient(routes: Self.defaultRoutes))
+
+        let results = try await catalog.search("sin imagen")
+
+        #expect(results.isEmpty)
+    }
+
+    @Test
+    func imageUsesSmallThumbnailWithFallbackToOriginal() async throws {
+        // Given
+        let catalog = makeCatalog(client: StubHTTPClient(routes: Self.defaultRoutes))
+
+        // When
+        let results = try await catalog.search("")
+
+        // Then
+        let images = Dictionary(uniqueKeysWithValues: results.map { ($0.id, $0.imageURL) })
+        #expect(images[73] == URL(string: "https://example.test/bench-small.png"))
+        #expect(images[10] == URL(string: "https://example.test/squat.png"))
+    }
+
+    @Test
     func searchIgnoresCaseAndDiacritics() async throws {
-        let catalog = makeCatalog(client: StubHTTPClient(responses: [Self.firstPage, Self.secondPage]))
+        let catalog = makeCatalog(client: StubHTTPClient(routes: Self.defaultRoutes))
 
         let results = try await catalog.search("BICEPS")
 
@@ -46,33 +82,43 @@ struct WgerExerciseCatalogTests {
     }
 
     @Test
+    func searchMatchesEveryWordInAnyOrder() async throws {
+        let catalog = makeCatalog(client: StubHTTPClient(routes: Self.defaultRoutes))
+
+        let results = try await catalog.search("  banca   PRESS ")
+
+        #expect(results.map(\.name) == ["Press de banca"])
+    }
+
+    @Test
     func catalogIsDownloadedOnlyOnce() async throws {
         // Given
-        let client = StubHTTPClient(responses: [Self.firstPage, Self.secondPage])
+        let client = StubHTTPClient(routes: Self.defaultRoutes)
         let catalog = makeCatalog(client: client)
 
         // When
         _ = try await catalog.search("press")
         _ = try await catalog.search("sentadilla")
 
-        // Then
-        #expect(await client.requestedURLs.count == 2)
+        // Then: two translation pages plus one image page
+        #expect(await client.requestedURLs.count == 3)
     }
 
     @Test
-    func requestsTheDeviceLanguage() async throws {
-        let client = StubHTTPClient(responses: [Self.secondPage])
+    func requestsTheDeviceLanguageAndMainImages() async throws {
+        let client = StubHTTPClient(routes: Self.defaultRoutes)
         let catalog = makeCatalog(client: client)
 
         _ = try await catalog.search("")
 
-        let query = await client.requestedURLs.first?.query() ?? ""
-        #expect(query.contains("language=4"))
+        let queries = await client.requestedURLs.compactMap { $0.query() }
+        #expect(queries.contains { $0.contains("language=4") })
+        #expect(queries.contains { $0.contains("is_main=True") })
     }
 
     @Test
     func serverErrorIsReported() async {
-        let catalog = makeCatalog(client: StubHTTPClient(responses: ["{}"], statusCode: 503))
+        let catalog = makeCatalog(client: StubHTTPClient(routes: Self.defaultRoutes, statusCode: 503))
 
         await #expect(throws: CatalogError.badStatus(503)) {
             try await catalog.search("")
@@ -82,7 +128,10 @@ struct WgerExerciseCatalogTests {
     @Test
     func failedLoadCanBeRetried() async throws {
         // Given
-        let client = StubHTTPClient(responses: ["not json", Self.secondPage])
+        let client = StubHTTPClient(routes: [
+            "exercise-translation": ["not json", Self.translationsSecondPage],
+            "exerciseimage": [Self.images, Self.images],
+        ])
         let catalog = makeCatalog(client: client)
         _ = try? await catalog.search("")
 
@@ -106,20 +155,25 @@ struct WgerExerciseCatalogTests {
     }
 }
 
-/// Returns the queued bodies in order, one per request.
+/// Answers each request with the next queued body for the first route its path contains.
 private actor StubHTTPClient: HTTPClient {
-    private var responses: [String]
+    private var routes: [String: [String]]
     private let statusCode: Int
     private(set) var requestedURLs: [URL] = []
 
-    init(responses: [String], statusCode: Int = 200) {
-        self.responses = responses
+    init(routes: [String: [String]], statusCode: Int = 200) {
+        self.routes = routes
         self.statusCode = statusCode
     }
 
     func data(from url: URL) async throws -> (Data, URLResponse) {
         requestedURLs.append(url)
-        let body = responses.isEmpty ? "{}" : responses.removeFirst()
+        let key = routes.keys.first { url.path().contains($0) }
+        var body = "{}"
+        if let key, var queue = routes[key], !queue.isEmpty {
+            body = queue.removeFirst()
+            routes[key] = queue
+        }
         let response = HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
         return (Data(body.utf8), response)
     }

@@ -63,8 +63,13 @@ struct AddExerciseView: View {
         case .loaded:
             Section {
                 ForEach(viewModel.results) { item in
-                    Button(item.name) {
+                    Button {
                         if viewModel.add(item) { dismiss() }
+                    } label: {
+                        HStack(spacing: 12) {
+                            ExerciseThumbnail(url: item.imageURL)
+                            Text(item.name)
+                        }
                     }
                     .foregroundStyle(.primary)
                 }

@@ -74,7 +74,8 @@ private struct ExerciseRow: View {
     let preferredUnit: WeightUnit
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
+            ExerciseThumbnail(url: summary.exercise.imageURL)
             VStack(alignment: .leading, spacing: 4) {
                 Text(summary.exercise.name)
                     .font(.headline)

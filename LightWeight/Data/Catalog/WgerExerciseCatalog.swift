@@ -33,9 +33,12 @@ actor WgerExerciseCatalog: ExerciseCatalogService {
 
     func search(_ query: String) async throws -> [CatalogExercise] {
         let exercises = try await allExercises()
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return exercises }
-        return exercises.filter { $0.name.localizedStandardContains(trimmed) }
+        // Every word must appear, in any order: "press banca" finds "Press de Banca".
+        let words = query.split(whereSeparator: \.isWhitespace)
+        guard !words.isEmpty else { return exercises }
+        return exercises.filter { exercise in
+            words.allSatisfy { exercise.name.localizedStandardContains($0) }
+        }
     }
 
     /// wger language id of the first preferred language wger supports, falling back to English.
@@ -61,14 +64,48 @@ actor WgerExerciseCatalog: ExerciseCatalogService {
         return exercises
     }
 
+    /// Only exercises with a main image are offered: they tend to be the common gym
+    /// exercises, and the rest of the catalog is mostly niche or incomplete.
     private func fetchAll() async throws -> [CatalogExercise] {
-        var nextURL: URL? = baseURL
+        let translationsURL = baseURL
             .appending(path: "exercise-translation/")
             .appending(queryItems: [
                 URLQueryItem(name: "language", value: String(languageID)),
                 URLQueryItem(name: "limit", value: "500"),
             ])
-        var translations: [WgerTranslationDTO] = []
+        let imagesURL = baseURL
+            .appending(path: "exerciseimage/")
+            .appending(queryItems: [
+                URLQueryItem(name: "is_main", value: "True"),
+                URLQueryItem(name: "limit", value: "500"),
+            ])
+
+        async let translations: [WgerTranslationDTO] = fetchPages(startingAt: translationsURL)
+        async let images: [WgerImageDTO] = fetchPages(startingAt: imagesURL)
+
+        let imageURLs = Dictionary(
+            try await images.map { ($0.exercise, $0.thumbnails?.small ?? $0.image) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        // wger has a few duplicated names; keep the first one so the list is not confusing.
+        var seenNames = Set<String>()
+        return try await translations
+            .compactMap { translation -> CatalogExercise? in
+                guard let imageURL = imageURLs[translation.exercise] else { return nil }
+                return CatalogExercise(
+                    reference: CatalogReference(source: Self.source, externalID: translation.exercise),
+                    name: translation.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    imageURL: imageURL
+                )
+            }
+            .filter { !$0.name.isEmpty && seenNames.insert($0.name.lowercased()).inserted }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private nonisolated func fetchPages<Item: Decodable & Sendable>(startingAt url: URL) async throws -> [Item] {
+        var nextURL: URL? = url
+        var items: [Item] = []
 
         while let url = nextURL {
             try Task.checkCancellation()
@@ -76,17 +113,11 @@ actor WgerExerciseCatalog: ExerciseCatalogService {
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 throw CatalogError.badStatus(http.statusCode)
             }
-            let page = try JSONDecoder().decode(WgerPageDTO<WgerTranslationDTO>.self, from: data)
-            translations += page.results
+            let page = try JSONDecoder().decode(WgerPageDTO<Item>.self, from: data)
+            items += page.results
             nextURL = page.next
         }
-
-        // wger has a few duplicated names; keep the first one so the list is not confusing.
-        var seenNames = Set<String>()
-        return translations
-            .map { CatalogExercise(reference: CatalogReference(source: Self.source, externalID: $0.exercise), name: $0.name.trimmingCharacters(in: .whitespacesAndNewlines)) }
-            .filter { !$0.name.isEmpty && seenNames.insert($0.name.lowercased()).inserted }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        return items
     }
 }
 
@@ -98,4 +129,14 @@ nonisolated struct WgerPageDTO<Item: Decodable & Sendable>: Decodable, Sendable 
 nonisolated struct WgerTranslationDTO: Decodable, Sendable {
     let exercise: Int
     let name: String
+}
+
+nonisolated struct WgerImageDTO: Decodable, Sendable {
+    struct Thumbnails: Decodable, Sendable {
+        let small: URL?
+    }
+
+    let exercise: Int
+    let image: URL
+    let thumbnails: Thumbnails?
 }

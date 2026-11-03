@@ -50,7 +50,7 @@ final class AddExerciseViewModel {
 
     /// Returns `true` when the exercise was saved and the screen can close.
     func add(_ item: CatalogExercise) -> Bool {
-        save(Exercise(name: item.name, catalogReference: item.reference))
+        save(Exercise(name: item.name, catalogReference: item.reference, imageURL: item.imageURL))
     }
 
     func addCustom() -> Bool {

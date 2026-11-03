@@ -26,16 +26,18 @@ struct SwiftDataTrainingRepositoryTests {
     }
 
     @Test
-    func catalogReferenceRoundTrips() throws {
+    func catalogReferenceAndImageRoundTrip() throws {
         // Given
         let reference = CatalogReference(source: "wger", externalID: 73)
-        try repository.addExercise(Exercise(name: "Press banca", catalogReference: reference))
+        let imageURL = URL(string: "https://wger.de/media/exercise-images/73/bench.png")
+        try repository.addExercise(Exercise(name: "Press banca", catalogReference: reference, imageURL: imageURL))
 
         // When
         let stored = try repository.exercises().first
 
         // Then
         #expect(stored?.catalogReference == reference)
+        #expect(stored?.imageURL == imageURL)
     }
 
     @Test

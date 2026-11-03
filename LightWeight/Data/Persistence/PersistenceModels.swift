@@ -10,6 +10,7 @@ final class ExerciseModel {
     var name: String = ""
     var catalogSource: String?
     var catalogExternalID: Int?
+    var imageURLString: String?
     var createdAt: Date = Date.now
 
     @Relationship(deleteRule: .cascade, inverse: \WorkoutSetModel.exercise)
@@ -20,6 +21,7 @@ final class ExerciseModel {
         name = exercise.name
         catalogSource = exercise.catalogReference?.source
         catalogExternalID = exercise.catalogReference?.externalID
+        imageURLString = exercise.imageURL?.absoluteString
         createdAt = exercise.createdAt
     }
 
@@ -27,7 +29,13 @@ final class ExerciseModel {
         let reference = catalogSource.flatMap { source in
             catalogExternalID.map { CatalogReference(source: source, externalID: $0) }
         }
-        return Exercise(id: id, name: name, catalogReference: reference, createdAt: createdAt)
+        return Exercise(
+            id: id,
+            name: name,
+            catalogReference: reference,
+            imageURL: imageURLString.flatMap(URL.init(string:)),
+            createdAt: createdAt
+        )
     }
 }
 

@@ -50,7 +50,11 @@ struct AddExerciseViewModelTests {
         // Given
         let repository = InMemoryTrainingRepository()
         let viewModel = AddExerciseViewModel(catalog: StaticExerciseCatalog(), repository: repository)
-        let item = CatalogExercise(reference: CatalogReference(source: "wger", externalID: 73), name: "Press de banca")
+        let item = CatalogExercise(
+            reference: CatalogReference(source: "wger", externalID: 73),
+            name: "Press de banca",
+            imageURL: URL(string: "https://wger.de/media/exercise-images/73/bench.png")
+        )
 
         // When
         let saved = viewModel.add(item)
@@ -58,6 +62,7 @@ struct AddExerciseViewModelTests {
         // Then
         #expect(saved)
         #expect(repository.storedExercises.first?.catalogReference == item.reference)
+        #expect(repository.storedExercises.first?.imageURL == item.imageURL)
     }
 
     @Test
